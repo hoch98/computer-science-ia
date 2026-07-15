@@ -1,148 +1,604 @@
-import { unstable_noStore as noStore } from "next/cache";
-import Image from "next/image";
-import Link from "next/link";
+"use client";
 
-import { auth } from "@/auth";
-import { SignInButton, SignOutButton } from "@/components/auth";
-import prisma from "@/lib/prisma";
-import { formatName } from "@/lib/utils";
+import { useState, useEffect } from "react";
+import {
+  TextField,
+  Box,
+  Button,
+  IconButton,
+  Autocomplete,
+  Chip,
+  Typography,
+  Fade,
+  Modal,
+  Slider,
+  Checkbox,
+  CircularProgress,
+} from "@mui/material";
+import SettingsIcon from "@mui/icons-material/Settings";
+import CloseIcon from "@mui/icons-material/Close";
 
-import type { User } from "@prisma/client";
-import type { Session } from "next-auth";
+import type { Activity } from "@prisma/client";
 
-function UserMenu({ user }: { user: NonNullable<Session["user"]> }) {
-  return (
-    <div className="relative group">
-      <button className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors">
-        {user.image ? (
-          <Image
-            src={user.image}
-            alt={formatName(user.name)}
-            width={32}
-            height={32}
-            className="rounded-full"
-          />
-        ) : (
-          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-            <span className="text-gray-500 text-sm font-medium">
-              {(user.name || "U").charAt(0)}
-            </span>
-          </div>
-        )}
-        <span className="text-sm font-medium text-gray-700">
-          {formatName(user.name)}
-        </span>
-        <svg
-          className="w-4 h-4 text-gray-500"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-      </button>
-      <div className="absolute right-0 mt-1 w-36 py-1 bg-white rounded-lg shadow-lg border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all">
-        <Link
-          href={`/users/${user.id}`}
-          className="block w-full text-left px-4 py-2 text-sm text-gray-600 hover:text-gray-800 font-medium hover:bg-gray-50 transition-colors"
-        >
-          View profile
-        </Link>
-        <SignOutButton />
-      </div>
-    </div>
-  );
+interface ActivitySelectorProps {
+  allActivities: Activity[];
 }
 
-function UserCard({ user }: { user: User }) {
-  return (
-    <Link
-      href={`/users/${user.id}`}
-      className="block transition-transform hover:scale-[1.02]"
-    >
-      <div className="flex items-center gap-3 p-4 bg-white rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
-        {user.image ? (
-          <Image
-            src={user.image}
-            alt={formatName(user.name)}
-            width={40}
-            height={40}
-            className="rounded-full"
-          />
-        ) : (
-          <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-            <span className="text-gray-500 text-sm font-medium">
-              {(user.name || "User").charAt(0)}
-            </span>
-          </div>
-        )}
-        <div>
-          <div className="font-medium text-gray-900">
-            {formatName(user.name)}
-          </div>
-        </div>
-      </div>
-    </Link>
-  );
+interface Recommendation {
+  activity_id: number;
+  activity_name: string;
+  activity_type: string;
+  tags: string[];
+  cosine_similarity: number;
 }
 
-export default async function Home() {
-  noStore();
+const modalStyle = {
+  position: "absolute" as const,
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
+  width: "700px",
+  bgcolor: "background.paper",
+  borderRadius: "16px",
+  boxShadow: 24,
+  p: 4,
+};
 
-  const session = await auth();
-  // limit to 100 users and cache for 60 seconds.
-  const users = await prisma.user.findMany({
-    take: 100,
-    cacheStrategy: {
-      ttl: 60,
-      swr: 60,
-    },
-  });
+export default function ActivitySelector({ allActivities }: ActivitySelectorProps) {
+  const [value, setValue] = useState<Activity | null>(null);
+  const [inputValue, setInputValue] = useState("");
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [options, setOptions] = useState<Activity[]>([]);
+  const [error, setError] = useState(false);
+  const [showAlert, setShowAlert] = useState(false);
+
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
+  const [isRecommending, setIsRecommending] = useState(false);
+
+  const [open, setOpen] = useState(false);
+  const handleOpen = () => setOpen(true);
+  const handleClose = () => setOpen(false);
+
+  const [useCalendarID, setUseCalendarID] = useState(true);
+  const [calendarID, setCalendarID] = useState("");
+  const [grade, setGrade] = useState(9);
+
+  async function findActivityByName(query: string): Promise<Activity[]> {
+    if (query.trim() === "") {
+      return [];
+    }
+    try {
+      const response = await fetch(
+        `/api/activities/name/${encodeURIComponent(query)}`
+      );
+      if (!response.ok) {
+        throw new Error("Network request failed");
+      }
+      const data: Activity[] = await response.json();
+      return data;
+    } catch (error) {
+      console.warn(
+        "Server search failed. Falling back to locally loaded activities:",
+        error
+      );
+      return allActivities.filter((activity) =>
+        activity.name.toLowerCase().includes(query.toLowerCase())
+      );
+    }
+  }
+
+  useEffect(() => {
+    let active = true;
+
+    const fetchOptions = async () => {
+      const results = await findActivityByName(inputValue);
+      if (active) {
+        setOptions(results);
+      }
+    };
+
+    fetchOptions();
+
+    return () => {
+      active = false;
+    };
+  }, [inputValue]);
+
+  useEffect(() => {
+    if (showAlert) {
+      const timer = setTimeout(() => {
+        setShowAlert(false);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [showAlert]);
+
+  const handleRemoveActivity = (idToRemove: number) => {
+    setActivities(activities.filter((activity) => activity.id !== idToRemove));
+  };
+
+  const handleRecommend = async () => {
+    if (activities.length == 0) {alert("No activities added!"); return;}
+    setIsRecommending(true);
+    try {
+      const response = await fetch('/api/activities/ranking', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          activities: activities.map(a => a.id),
+          unavailable_slots: [], 
+          grade: grade
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch recommendations");
+      }
+
+      const data = await response.json();
+      setRecommendations(data);
+    } catch (error) {
+      console.error("Error fetching recommendations:", error);
+    } finally {
+      setIsRecommending(false);
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
-      <header className="fixed top-0 left-0 right-0 bg-white/80 backdrop-blur-sm border-b border-gray-100 z-10">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link href="/" className="text-xl font-bold text-gray-900">
-            Superblog
-          </Link>
-          <div>
-            {session?.user ? (
-              <UserMenu user={session.user} />
-            ) : (
-              <SignInButton />
-            )}
-          </div>
-        </div>
-      </header>
+    <>
+      <Box
+        sx={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#F7F9FC",
+          padding: { xs: "20px", md: "40px" },
+          boxSizing: "border-box",
+        }}
+      >
+        <Box
+          sx={{
+            width: "100%",
+            maxWidth: "1500px",
+            position: "relative",
+          }}
+        >
+          <Modal
+            open={open}
+            onClose={handleClose}
+            aria-labelledby="modal-modal-title"
+            aria-describedby="modal-modal-description"
+          >
+            <Box sx={modalStyle}>
+              <Typography variant="h6" component="h2" sx={{ fontWeight: 500 }}>
+                Filter
+              </Typography>
+              <hr style={{ border: "0", borderTop: "1px solid #E0E0E0", margin: "16px 0" }} />
+              <Typography variant="body1" component="h2" sx={{ fontWeight: 500, mb: 1 }}>
+                Grade
+              </Typography>
+              <Box sx={{ display: "flex", justifyContent: "center", px: 2, mb: 2 }}>
+                <Slider
+                  defaultValue={9}
+                  step={1}
+                  min={9}
+                  max={12}
+                  sx={{ width: "100%" }}
+                  marks={[
+                    { value: 9, label: "9" },
+                    { value: 10, label: "10" },
+                    { value: 11, label: "11" },
+                    { value: 12, label: "12" },
+                  ]}
+                  value={grade}
+                  onChange={(_event, value) => {
+                    setGrade(value as number);
+                  }}
+                />
+              </Box>
+              <Typography variant="body1" component="h2" sx={{ fontWeight: 500, mb: 1 }}>
+                Timetable
+              </Typography>
+              <Box sx={{ display: "flex", justifyContent: "space-evenly" }}>
+                <Box>
+                  <Checkbox
+                    checked={useCalendarID}
+                    onChange={() => {
+                      setUseCalendarID(!useCalendarID);
+                    }}
+                  />
+                  <span
+                    style={{
+                      color: !useCalendarID ? "#747474" : "black",
+                      fontFamily: "sans-serif",
+                    }}
+                  >
+                    Import using calendar ID
+                  </span>
+                  <input
+                    type="text"
+                    style={{
+                      marginTop: "20px",
+                      marginLeft: "10px",
+                      width: "100px",
+                      fontSize: "medium",
+                      textAlign: "center",
+                    }}
+                    disabled={!useCalendarID}
+                    value={calendarID}
+                    onChange={(e) => {
+                      setCalendarID(e.target.value);
+                    }}
+                  />
+                </Box>
+                <Box>
+                  <Checkbox
+                    checked={!useCalendarID}
+                    onChange={() => {
+                      setUseCalendarID(!useCalendarID);
+                    }}
+                  />
+                  <input
+                    type="button"
+                    style={{ marginTop: "20px", fontSize: "medium" }}
+                    value="Import Manually"
+                  />
+                </Box>
+              </Box>
+            </Box>
+          </Modal>
 
-      <main className="max-w-4xl mx-auto px-4 pt-24 pb-16">
-        <div className="text-center mb-16">
-          <h1 className="text-5xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 font-[family-name:var(--font-geist-sans)]">
-            Superblog
-          </h1>
-          <p className="text-gray-600 text-lg max-w-2xl mx-auto">
-            A demo application showcasing the power of Prisma Postgres and
-            Next.js
-          </p>
-        </div>
+          <Fade in={showAlert} timeout={{ enter: 300, exit: 1000 }}>
+            <Box
+              sx={{
+                position: "fixed",
+                top: "10%",
+                left: "50%",
+                transform: "translateX(-50%)",
+                backgroundColor: "#FFD2D2",
+                color: "#D8000C",
+                border: "1px solid #D8000C",
+                padding: "12px 24px",
+                borderRadius: "8px",
+                zIndex: 9999,
+                pointerEvents: "none",
+              }}
+            >
+              <Typography sx={{ fontWeight: 400, fontSize: "1rem" }}>
+                Activity already added
+              </Typography>
+            </Box>
+          </Fade>
 
-        <div>
-          <h2 className="text-2xl font-bold mb-6 text-gray-900">
-            Community Members
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {users.map((user) => (
-              <UserCard key={user.id} user={user} />
-            ))}
-          </div>
-        </div>
-      </main>
-    </div>
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: { xs: "column", md: "row" },
+              gap: "40px",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <Box sx={{ flex: 4, display: "flex", flexDirection: "column", gap: "24px" }}>
+              <Autocomplete
+                disablePortal
+                freeSolo
+                value={value}
+                onChange={(_event, newValue) => {
+                  if (newValue && typeof newValue === "object") {
+                    const exists = activities.some((act) => act.id === newValue.id);
+                    if (exists) {
+                      setError(true);
+                      setShowAlert(true);
+                    } else {
+                      setActivities([...activities, newValue]);
+                      setError(false);
+                    }
+                  }
+                  setValue(null);
+                  setInputValue("");
+                }}
+                inputValue={inputValue}
+                onInputChange={(_event, newInputValue) => {
+                  setInputValue(newInputValue);
+                  if (error) setError(false);
+                }}
+                getOptionLabel={(option) => (typeof option === "string" ? option : option.name)}
+                options={options}
+                sx={{ width: "100%" }}
+                slotProps={{
+                  paper: {
+                    sx: {
+                      border: "1px solid #7F7F7F",
+                      borderTop: "none",
+                      borderRadius: "0px 0px 12px 12px",
+                      boxShadow: "none",
+                      marginTop: "-2px",
+                      backgroundColor: "#F0EFF1",
+                    },
+                  },
+                }}
+                renderOption={(props, option) => {
+                  const { key, ...optionProps } = props;
+                  return (
+                    <li key={key} {...optionProps} style={{ padding: 0 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "12px",
+                          width: "100%",
+                          padding: "20px 24px",
+                          borderBottom: "1px solid #D5D4D6",
+                          backgroundColor: "#F0EFF1",
+                        }}
+                      >
+                        <Typography
+                          variant="body1"
+                          sx={{ fontWeight: 400, color: "#000", fontSize: "1.1rem", textAlign: "left" }}
+                        >
+                          {option.name}
+                        </Typography>
+                        <Box sx={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                          <Chip
+                            label={option.type}
+                            size="medium"
+                            sx={{
+                              fontSize: "13px",
+                              borderRadius: "6px",
+                              backgroundColor: "#EAD1DC",
+                              border: "1px solid #7F7F7F",
+                              color: "black",
+                              px: 1,
+                              height: "28px",
+                            }}
+                          />
+                        </Box>
+                      </Box>
+                    </li>
+                  );
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    placeholder="Search Activity..."
+                    error={error}
+                    sx={{
+                      backgroundColor: "#D3E2F4",
+                      fontFamily: "sans-serif",
+                      borderRadius: "12px",
+                      "& .MuiOutlinedInput-root": {
+                        height: "54px",
+                        "& fieldset": {
+                          borderColor: "#7F7F7F",
+                          borderWidth: "1px",
+                          borderRadius: "12px",
+                        },
+                      },
+                      "& .MuiInputBase-input": {
+                        fontFamily: "sans-serif",
+                        fontSize: "1.1rem",
+                        padding: "0 16px",
+                      },
+                    }}
+                  />
+                )}
+              />
+
+              <Box
+                sx={{
+                  backgroundColor: "#D3E2F4",
+                  border: "1px solid #7F7F7F",
+                  borderRadius: "20px",
+                  height: { xs: "300px", md: "60vh" },
+                  padding: "32px 24px",
+                  boxSizing: "border-box",
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                <Typography
+                  variant="h5"
+                  sx={{ fontWeight: 600, color: "#3A3A3A", textAlign: "left", fontFamily: "sans-serif", mb: 1 }}
+                >
+                  Recommended for You
+                </Typography>
+
+                {isRecommending ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                    <CircularProgress sx={{ color: "#7F7F7F" }} />
+                  </Box>
+                ) : recommendations.length > 0 ? (
+                  recommendations.map((rec) => (
+                    <Box
+                      key={rec.activity_id}
+                      sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "12px",
+                        padding: "20px 24px",
+                        border: "1px solid #7F7F7F",
+                        borderRadius: "12px",
+                        backgroundColor: "#F0EFF1",
+                      }}
+                    >
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <Typography 
+                          variant="body1" 
+                          sx={{ fontWeight: 400, color: "#000", fontSize: "1.1rem", textAlign: "left", fontFamily: "sans-serif" }}
+                        >
+                          {rec.activity_name}
+                        </Typography>
+                        <Chip 
+                          label={`Match: ${rec.cosine_similarity.toFixed(1)}%`}
+                          size="small"
+                          sx={{ 
+                            backgroundColor: '#E2ECD5', 
+                            fontWeight: 600, 
+                            border: '1px solid #7F7F7F', 
+                            fontFamily: "sans-serif" 
+                          }}
+                        />
+                      </Box>
+
+                      <Box sx={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                        <Chip
+                          label={rec.activity_type}
+                          size="medium"
+                          sx={{
+                            fontSize: "13px",
+                            borderRadius: "6px",
+                            backgroundColor: "#EAD1DC",
+                            border: "1px solid #7F7F7F",
+                            color: "black",
+                            px: 1,
+                            height: "28px",
+                            fontFamily: "sans-serif",
+                          }}
+                        />
+                        {rec.tags && rec.tags.map((tag) => (
+                          <Chip
+                            key={tag}
+                            label={tag}
+                            size="medium"
+                            sx={{
+                              fontSize: "13px",
+                              borderRadius: "6px",
+                              backgroundColor: "#D3E2F4",
+                              border: "1px solid #7F7F7F",
+                              color: "black",
+                              px: 1,
+                              height: "28px",
+                              fontFamily: "sans-serif",
+                            }}
+                          />
+                        ))}
+                      </Box>
+                    </Box>
+                  ))
+                ) : (
+                  <Typography variant="body1" sx={{fontFamily: "sans-serif", color: "#5A5A5A", fontStyle: "italic", mt: 2 }}>
+                    Add activities to your list and click Search to see recommendations.
+                  </Typography>
+                )}
+              </Box>
+            </Box>
+
+            <Box sx={{ flex: 2, display: "flex", flexDirection: "column", gap: "24px" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "16px",
+                  height: "54px",
+                }}
+              >
+                <Button
+                  variant="contained"
+                  onClick={handleRecommend}
+                  disabled={isRecommending}
+                  sx={{
+                    flexGrow: 1,
+                    backgroundColor: "#E2ECD5",
+                    color: "black",
+                    fontSize: "1.05rem",
+                    textTransform: "none",
+                    borderRadius: "12px",
+                    border: "solid #7F7F7F 1px",
+                    boxShadow: "none",
+                    "&:hover": { backgroundColor: "#d1e0c2", boxShadow: "none" },
+                    "&.Mui-disabled": { backgroundColor: "#e2ecd5", color: "rgba(0,0,0,0.4)" }
+                  }}
+                >
+                  {isRecommending ? 'Searching...' : 'Search'}
+                </Button>
+
+                <IconButton
+                  sx={{
+                    backgroundColor: "#EEEEEE",
+                    border: "solid 1px #7F7F7F",
+                    height: "100%",
+                    aspectRatio: "1/1",
+                    borderRadius: "12px",
+                    color: "black",
+                    "&:hover": { backgroundColor: "#e0e0e0" },
+                  }}
+                  onClick={handleOpen}
+                  aria-label="settings"
+                >
+                  <SettingsIcon sx={{ fontSize: "1.5rem" }} />
+                </IconButton>
+              </Box>
+
+              <Box
+                sx={{
+                  backgroundColor: "#D3E2F4",
+                  border: "1px solid #7F7F7F",
+                  borderRadius: "20px",
+                  padding: "32px 24px",
+                  boxSizing: "border-box",
+                  height: { xs: "auto", md: "60vh" },
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "20px",
+                }}
+              >
+                <Typography
+                  variant="h6"
+                  sx={{ fontWeight: 600, color: "#3A3A3A", textAlign: "left", mb: "4px" }}
+                >
+                  Your Activities
+                </Typography>
+
+                <Box sx={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {activities.map((activity) => (
+                    <Box
+                      key={activity.id}
+                      sx={{
+                        display: "flex",
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "16px 20px",
+                        border: "1px solid #7F7F7F",
+                        borderRadius: "12px",
+                        backgroundColor: "#F0EFF1",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Typography
+                        variant="body1"
+                        sx={{ fontWeight: 400, color: "text.primary", textAlign: "left" }}
+                      >
+                        {activity.name}
+                      </Typography>
+                      <IconButton
+                        size="small"
+                        onClick={() => handleRemoveActivity(activity.id)}
+                        sx={{ color: "grey.600", p: 0.5 }}
+                      >
+                        <CloseIcon fontSize="small" sx={{ fontSize: "1.2rem" }} />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  
+                  {activities.length === 0 && (
+                     <Typography variant="body2" sx={{ color: "#7F7F7F", fontStyle: "italic", textAlign: "center", mt: 2 }}>
+                       No activities added yet.
+                     </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    </>
   );
 }

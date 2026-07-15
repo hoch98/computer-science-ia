@@ -1,71 +1,45 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+datasource db {
+  provider = "sqlite"
+  url      = "file:./database.db"
+}
 
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+model Activity {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  type        String
+  description String
+  minGrade    Int      @map("min_grade")
+  maxGrade    Int      @map("max_grade")
+  lastUpdated DateTime @default(now()) @map("last_updated")
+
+  schedules   ActivitySchedule[]
+  keywords    ActivityKeyword[]
+
+  @@map("activities")
 }
 
-model User {
-  id            Int       @id @default(autoincrement())
-  name          String?
-  email         String    @unique
-  emailVerified DateTime?
-  image         String?
-  posts         Post[]
-  accounts      Account[]
-  sessions      Session[]
+model ActivitySchedule {
+  id         Int    @id @default(autoincrement())
+  activityId Int    @map("activity_id")
+  dayOfWeek  String @map("day_of_week")
+  startTime  Int?   @map("start_time")
+  endTime    Int?   @map("end_time")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+
+  @@map("activity_schedules")
 }
 
-model Account {
-  userId            Int
-  type              String
-  provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
-  scope             String?
-  id_token          String?
-  session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+model ActivityKeyword {
+  id         Int    @id @default(autoincrement())
+  activityId Int    @map("activity_id")
+  keyword    String
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  activity   Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
 
-  @@id([provider, providerAccountId])
-}
-
-model Session {
-  id           Int      @id @default(autoincrement())
-  sessionToken String   @unique
-  userId       Int
-  expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Post {
-  id        Int     @id @default(autoincrement())
-  title     String
-  content   String?
-  published Boolean @default(false)
-  authorId  Int
-  author    User    @relation(fields: [authorId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  @@map("activity_keywords")
 }
