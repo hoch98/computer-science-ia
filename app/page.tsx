@@ -10,10 +10,16 @@ import {
   Chip,
   Typography,
   Fade,
-  Modal,
   Slider,
   Checkbox,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  List,
+  ListItem,
+  ListItemText,
 } from "@mui/material";
 import SettingsIcon from "@mui/icons-material/Settings";
 import CloseIcon from "@mui/icons-material/Close";
@@ -24,25 +30,66 @@ interface ActivitySelectorProps {
   allActivities: Activity[];
 }
 
+interface ActivitySchedule {
+  id: number;
+  activityId: number;
+  dayOfWeek: string;
+  startTime: number | null;
+  endTime: number | null;
+}
+
 interface Recommendation {
   activity_id: number;
   activity_name: string;
   activity_type: string;
   tags: string[];
+  activity_schedules: ActivitySchedule[];
   cosine_similarity: number;
 }
 
-const modalStyle = {
-  position: "absolute" as const,
-  top: "50%",
-  left: "50%",
-  transform: "translate(-50%, -50%)",
-  width: "700px",
-  bgcolor: "background.paper",
-  borderRadius: "16px",
-  boxShadow: 24,
-  p: 4,
+const ACTIVITY_TYPES = [
+  "Service - Local",
+  "Service - College",
+  "Service - Global Concerns",
+  "Sport, Health & Fitness",
+  "Global & College Affairs",
+  "Art, Design & Technology",
+  "Language & Culture",
+  "Music and Instrumental Teaching Programme",
+  "Drama & Dance",
+  "Academic - Languages",
+];
+
+// Helper function to format 24h/minutes numbers into readable time (e.g., 900 -> 09:00 AM, 1430 -> 02:30 PM)
+const formatScheduleTime = (time: number | null): string => {
+  if (time === null || time === undefined) return "N/A";
+  
+  const hours = Math.floor(time / 100);
+  const minutes = time % 100;
+  
+  const date = new Date();
+  date.setHours(hours, minutes, 0, 0);
+  
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 };
+
+function getFullDayName(shorthand: string) {
+  const dayMap: Record<string, string> = {
+    Mon: "Monday",
+    Tue: "Tuesday",
+    Wed: "Wednesday",
+    Thu: "Thursday",
+    Fri: "Friday",
+    Sat: "Saturday",
+    Sun: "Sunday",
+  };
+
+  return dayMap[shorthand] || shorthand;
+}
 
 export default function ActivitySelector({ allActivities }: ActivitySelectorProps) {
   const [value, setValue] = useState<Activity | null>(null);
@@ -55,13 +102,34 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isRecommending, setIsRecommending] = useState(false);
 
-  const [open, setOpen] = useState(false);
-  const handleOpen = () => setOpen(true);
-  const handleClose = () => setOpen(false);
+  // Filter / Constraints Dialog State
+  const [openFilterModal, setOpenFilterModal] = useState(false);
+  const handleOpenFilterModal = () => setOpenFilterModal(true);
+  const handleCloseFilterModal = () => setOpenFilterModal(false);
 
-  const [useCalendarID, setUseCalendarID] = useState(true);
-  const [calendarID, setCalendarID] = useState("");
+  const [useCalendarPDF, setUseCalendarPDF] = useState(true);
   const [grade, setGrade] = useState(9);
+
+  const [selectedTypes, setSelectedTypes] = useState<Set<string>>(
+    () => new Set(ACTIVITY_TYPES)
+  );
+
+  // State for Schedule Dialog Popup
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [selectedActivityForSchedule, setSelectedActivityForSchedule] = useState<{
+    name: string;
+    schedules: ActivitySchedule[];
+  } | null>(null);
+
+  const handleOpenScheduleModal = (name: string, schedules: ActivitySchedule[]) => {
+    setSelectedActivityForSchedule({ name, schedules });
+    setScheduleModalOpen(true);
+  };
+
+  const handleCloseScheduleModal = () => {
+    setScheduleModalOpen(false);
+    setSelectedActivityForSchedule(null);
+  };
 
   async function findActivityByName(query: string): Promise<Activity[]> {
     if (query.trim() === "") {
@@ -118,18 +186,22 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
   };
 
   const handleRecommend = async () => {
-    if (activities.length == 0) {alert("No activities added!"); return;}
+    if (activities.length === 0) {
+      alert("No activities added!");
+      return;
+    }
     setIsRecommending(true);
     try {
-      const response = await fetch('/api/activities/ranking', {
-        method: 'POST',
+      const response = await fetch("/api/activities/ranking", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          activities: activities.map(a => a.id),
-          unavailable_slots: [], 
-          grade: grade
+          activities: activities.map((a) => a.id),
+          unavailable_slots: [],
+          grade: grade,
+          tags: Array.from(selectedTypes),
         }),
       });
 
@@ -144,6 +216,18 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
     } finally {
       setIsRecommending(false);
     }
+  };
+
+  const handleTypeToggle = (typeName: string, isChecked: boolean) => {
+    setSelectedTypes((prevTypes) => {
+      const nextTypes = new Set(prevTypes);
+      if (isChecked) {
+        nextTypes.add(typeName);
+      } else {
+        nextTypes.delete(typeName);
+      }
+      return nextTypes;
+    });
   };
 
   return (
@@ -166,90 +250,175 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
             position: "relative",
           }}
         >
-          <Modal
-            open={open}
-            onClose={handleClose}
-            aria-labelledby="modal-modal-title"
-            aria-describedby="modal-modal-description"
+          {/* Schedule Inspector Dialog */}
+          <Dialog
+            open={scheduleModalOpen}
+            onClose={handleCloseScheduleModal}
+            fullWidth
+            maxWidth="xs"
+            sx={{ borderRadius: "16px", p: 1 }}
           >
-            <Box sx={modalStyle}>
-              <Typography variant="h6" component="h2" sx={{ fontWeight: 500 }}>
-                Filter
-              </Typography>
-              <hr style={{ border: "0", borderTop: "1px solid #E0E0E0", margin: "16px 0" }} />
-              <Typography variant="body1" component="h2" sx={{ fontWeight: 500, mb: 1 }}>
-                Grade
-              </Typography>
-              <Box sx={{ display: "flex", justifyContent: "center", px: 2, mb: 2 }}>
-                <Slider
-                  defaultValue={9}
-                  step={1}
-                  min={9}
-                  max={12}
-                  sx={{ width: "100%" }}
-                  marks={[
-                    { value: 9, label: "9" },
-                    { value: 10, label: "10" },
-                    { value: 11, label: "11" },
-                    { value: 12, label: "12" },
-                  ]}
-                  value={grade}
-                  onChange={(_event, value) => {
-                    setGrade(value as number);
+            <DialogTitle sx={{ fontWeight: 600, fontFamily: "sans-serif" }}>
+              {selectedActivityForSchedule?.name}
+            </DialogTitle>
+            <DialogContent dividers>
+              {selectedActivityForSchedule?.schedules &&
+              selectedActivityForSchedule.schedules.length > 0 ? (
+                <List disablePadding>
+                  {selectedActivityForSchedule.schedules.map((schedule, index) => (
+                    <ListItem
+                      key={schedule.id || index}
+                      sx={{
+                        px: 0,
+                        py: 1,
+                        borderBottom:
+                          index !== selectedActivityForSchedule.schedules.length - 1
+                            ? "1px solid #E0E0E0"
+                            : "none",
+                      }}
+                    >
+                      <ListItemText
+                        primary={getFullDayName(schedule.dayOfWeek)}
+                        secondary={`${formatScheduleTime(
+                          schedule.startTime
+                        )} - ${formatScheduleTime(schedule.endTime)}`}
+                        sx={{
+                          fontFamily: "sans-serif"
+                        }}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Typography
+                  variant="body2"
+                  sx={{ color: "#747474", fontStyle: "italic", my: 1 }}
+                >
+                  No schedule details available for this activity.
+                </Typography>
+              )}
+            </DialogContent>
+            <DialogActions sx={{ px: 3, py: 1.5 }}>
+              <Button
+                onClick={handleCloseScheduleModal}
+                sx={{ textTransform: "none", borderRadius: "8px", fontWeight: "400" }}
+              >
+                Close
+              </Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Constraints & Settings Dialog */}
+          <Dialog
+            open={openFilterModal}
+            onClose={handleCloseFilterModal}
+            fullWidth
+            maxWidth="sm"
+            sx={{ borderRadius: "16px", p: 1 }}
+          >
+            <DialogTitle sx={{ fontWeight: 600, fontFamily: "sans-serif" }}>
+              Filter & Preferences
+            </DialogTitle>
+
+            <DialogContent dividers sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+              {/* Grade Section */}
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, fontFamily: "sans-serif" }}>
+                  Grade
+                </Typography>
+                <Box sx={{ px: 2 }}>
+                  <Slider
+                    defaultValue={9}
+                    step={1}
+                    min={9}
+                    max={12}
+                    sx={{ width: "100%" }}
+                    marks={[
+                      { value: 9, label: "9" },
+                      { value: 10, label: "10" },
+                      { value: 11, label: "11" },
+                      { value: 12, label: "12" },
+                    ]}
+                    value={grade}
+                    onChange={(_event, value) => {
+                      setGrade(value as number);
+                    }}
+                  />
+                </Box>
+              </Box>
+
+              {/* Timetable Section */}
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, fontFamily: "sans-serif" }}>
+                  Timetable
+                </Typography>
+                <Box 
+                  sx={{ 
+                    display: "flex", 
+                    flexDirection: { xs: "column", sm: "row" }, 
+                    gap: 2, 
+                    alignItems: "center",
+                    justifyContent: { xs: "center", sm: "flex-start" } 
                   }}
-                />
-              </Box>
-              <Typography variant="body1" component="h2" sx={{ fontWeight: 500, mb: 1 }}>
-                Timetable
-              </Typography>
-              <Box sx={{ display: "flex", justifyContent: "space-evenly" }}>
-                <Box>
-                  <Checkbox
-                    checked={useCalendarID}
-                    onChange={() => {
-                      setUseCalendarID(!useCalendarID);
-                    }}
-                  />
-                  <span
-                    style={{
-                      color: !useCalendarID ? "#747474" : "black",
-                      fontFamily: "sans-serif",
-                    }}
-                  >
-                    Import using calendar ID
-                  </span>
-                  <input
-                    type="text"
-                    style={{
-                      marginTop: "20px",
-                      marginLeft: "10px",
-                      width: "100px",
-                      fontSize: "medium",
-                      textAlign: "center",
-                    }}
-                    disabled={!useCalendarID}
-                    value={calendarID}
-                    onChange={(e) => {
-                      setCalendarID(e.target.value);
-                    }}
-                  />
-                </Box>
-                <Box>
-                  <Checkbox
-                    checked={!useCalendarID}
-                    onChange={() => {
-                      setUseCalendarID(!useCalendarID);
-                    }}
-                  />
-                  <input
-                    type="button"
-                    style={{ marginTop: "20px", fontSize: "medium" }}
-                    value="Import Manually"
-                  />
+                >
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, marginLeft: {xs: "60px", md: "30px"}}}>
+                    <Checkbox
+                      checked={useCalendarPDF}
+                      onChange={() => setUseCalendarPDF(!useCalendarPDF)}
+                    />
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      style={{ fontSize: "14px" }}
+                      disabled={!useCalendarPDF}
+                    />
+                  </Box>
+                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+                    <Checkbox
+                      checked={!useCalendarPDF}
+                      onChange={() => setUseCalendarPDF(!useCalendarPDF)}
+                    />
+                    <input
+                      type="button"
+                      value="Import Manually"
+                      style={{ fontSize: "14px", padding: "4px 8px" }}
+                      disabled={useCalendarPDF}
+                    />
+                  </Box>
                 </Box>
               </Box>
-            </Box>
-          </Modal>
+
+              {/* Activity Types Section */}
+              <Box>
+                <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, fontFamily: "sans-serif" }}>
+                  Activity Type
+                </Typography>
+                <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5 }}>
+                  {ACTIVITY_TYPES.map((typeName) => (
+                    <Box key={typeName} sx={{ display: "flex", alignItems: "center" }}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedTypes.has(typeName)}
+                        onChange={(e) => handleTypeToggle(typeName, e.target.checked)}
+                      />
+                      <Typography variant="body2" sx={{ fontFamily: "sans-serif" }}>
+                        {typeName}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </DialogContent>
+
+            <DialogActions sx={{ px: 3, py: 1.5 }}>
+              <Button
+                onClick={handleCloseFilterModal}
+                sx={{ textTransform: "none", borderRadius: "8px", fontWeight: "400" }}
+              >
+                Close
+              </Button>
+            </DialogActions>
+          </Dialog>
 
           <Fade in={showAlert} timeout={{ enter: 300, exit: 1000 }}>
             <Box
@@ -410,7 +579,7 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                 </Typography>
 
                 {isRecommending ? (
-                  <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+                  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
                     <CircularProgress sx={{ color: "#7F7F7F" }} />
                   </Box>
                 ) : recommendations.length > 0 ? (
@@ -438,15 +607,15 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                           label={`Match: ${rec.cosine_similarity.toFixed(1)}%`}
                           size="small"
                           sx={{ 
-                            backgroundColor: '#E2ECD5', 
+                            backgroundColor: "#E2ECD5", 
                             fontWeight: 600, 
-                            border: '1px solid #7F7F7F', 
+                            border: "1px solid #7F7F7F", 
                             fontFamily: "sans-serif" 
                           }}
                         />
                       </Box>
 
-                      <Box sx={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      <Box sx={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
                         <Chip
                           label={rec.activity_type}
                           size="medium"
@@ -461,6 +630,29 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                             fontFamily: "sans-serif",
                           }}
                         />
+                        {rec.activity_schedules && rec.activity_schedules.length > 0 && (
+                          <Chip
+                            label="View Schedule"
+                            size="medium"
+                            onClick={() =>
+                              handleOpenScheduleModal(rec.activity_name, rec.activity_schedules)
+                            }
+                            sx={{
+                              fontSize: "13px",
+                              borderRadius: "6px",
+                              backgroundColor: "#FFF",
+                              border: "1px solid #7F7F7F",
+                              color: "black",
+                              px: 1,
+                              height: "28px",
+                              fontFamily: "sans-serif",
+                              cursor: "pointer",
+                              "&:hover": {
+                                backgroundColor: "#F5F5F5",
+                              },
+                            }}
+                          />
+                        )}
                         {rec.tags && rec.tags.map((tag) => (
                           <Chip
                             key={tag}
@@ -482,7 +674,7 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                     </Box>
                   ))
                 ) : (
-                  <Typography variant="body1" sx={{fontFamily: "sans-serif", color: "#5A5A5A", fontStyle: "italic", mt: 2 }}>
+                  <Typography variant="body1" sx={{ fontFamily: "sans-serif", color: "#5A5A5A", fontStyle: "italic", mt: 2 }}>
                     Add activities to your list and click Search to see recommendations.
                   </Typography>
                 )}
@@ -503,6 +695,7 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                   onClick={handleRecommend}
                   disabled={isRecommending}
                   sx={{
+                    fontWeight: "400",
                     flexGrow: 1,
                     backgroundColor: "#E2ECD5",
                     color: "black",
@@ -515,7 +708,7 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                     "&.Mui-disabled": { backgroundColor: "#e2ecd5", color: "rgba(0,0,0,0.4)" }
                   }}
                 >
-                  {isRecommending ? 'Searching...' : 'Search'}
+                  {isRecommending ? "Searching..." : "Search"}
                 </Button>
 
                 <IconButton
@@ -528,7 +721,7 @@ export default function ActivitySelector({ allActivities }: ActivitySelectorProp
                     color: "black",
                     "&:hover": { backgroundColor: "#e0e0e0" },
                   }}
-                  onClick={handleOpen}
+                  onClick={handleOpenFilterModal}
                   aria-label="settings"
                 >
                   <SettingsIcon sx={{ fontSize: "1.5rem" }} />

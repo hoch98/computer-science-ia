@@ -14,18 +14,17 @@ export async function POST(request: Request) {
     const content = await request.json();
     const payloadKeys = Object.keys(content);
     
-    // Strict JSON body key validation matching python:
-    // set(["activities", "unavailable_slots", "grade"]) == set(content.keys())
-    const requiredKeys = ["activities", "unavailable_slots", "grade"];
+    // makes sure body has required keys
+    const requiredKeys = ["activities", "unavailable_slots", "grade", "tags"];
     const hasAllKeys = requiredKeys.every(k => payloadKeys.includes(k)) && payloadKeys.length === requiredKeys.length;
 
     if (!hasAllKeys) {
       return new NextResponse('not appropriate', { status: 400 });
     }
 
-    const { activities: activitiesId, unavailable_slots, grade } = content;
+    const { activities: activitiesId, unavailable_slots, grade, tags } = content;
 
-    // 1. Compile target processed description
+    // compile descriptions
     let processedDescription: string[] = [];
     for (const id of activitiesId) {
       const activity = await prisma.activity.findUnique({ where: { id: Number(id) } });
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Fetch all valid activities based on Grade parameters with both schedules and keywords included
+    // fetch activites with schedule time and keywords
     const candidates = await prisma.activity.findMany({
       where: {
         minGrade: { lte: grade },
@@ -44,13 +43,14 @@ export async function POST(request: Request) {
       },
       include: { 
         schedules: true,
-        keywords: true, // <-- Fetching tags associated with this activity
+        keywords: true, 
       },
     });
 
-    // Handle structural unavailability collision filters inside application space
+    // filter out unavailable activities
     const validActivities = candidates.filter((activity) => {
       let collision = false;
+      if (!tags.includes(activity.type)) return false;
       for (const unavail of unavailable_slots) {
         const [unavailDay, unavailStart, unavailEnd] = unavail;
         
@@ -69,34 +69,34 @@ export async function POST(request: Request) {
       return !collision;
     });
 
-    // 3. Build corpus document records
+    // bulds document term corpus
     const allTermsInDocuments: string[][] = [];
     for (const activity of validActivities) {
       const terms = processDescription(`${activity.name} ${activity.description}`);
       allTermsInDocuments.push(terms);
     }
 
-    // Check if structural text representation is already matching
+    // check if structural text representation is already matching
     const targetString = JSON.stringify(processedDescription);
     const hasTargetInCorpus = allTermsInDocuments.some(doc => JSON.stringify(doc) === targetString);
     if (!hasTargetInCorpus) {
       allTermsInDocuments.push(processedDescription);
     }
 
-    // 4. Calculate IDF weights
+    // 4. calculate IDF weights
     const idfWeights = calculateInverseDocumentFrequencies(allTermsInDocuments);
 
-    // 5. Create Target Profile vector with TF-IDF weighting
+    // 5. create target vector with TF-IDF weighting
     const targetTf = calculateTermFrequencies(processedDescription);
     const targetVector = calculateTfidfVector(targetTf, idfWeights);
 
-    // 6. Creating rankings
+    // 6. creating rankings
     const rankings = [];
 
     for (let index = 0; index < validActivities.length; index++) {
       const activity = validActivities[index];
 
-      // If the item ID matches input query targets list, exclude it
+      // if the item ID matches input query targets list, exclude it
       if (activitiesId.includes(activity.id)) {
         continue;
       }
@@ -122,18 +122,19 @@ export async function POST(request: Request) {
         activity_id: activity.id,
         activity_name: activity.name,
         activity_type: activity.type,
+        activity_schedules: activity.schedules,
         tags: activity.keywords.map(k => k.keyword),
         cosine_similarity: similarityScore,
       });
     }
 
-    // Sort Descending by score (this ensures we get the strongest matches below the 60% threshold first)
+    // sort by score
     rankings.sort((a, b) => b.cosine_similarity - a.cosine_similarity);
 
-    // Filter to strictly keep activities that are less than 60% similar
+    // only take activites with <60% similarity, so duplicate activites of differnt time isn't included
     const filteredRankings = rankings.filter(item => item.cosine_similarity < 60);
 
-    // Slice and return only the first 10 items from the filtered set
+    // on return first 10
     return NextResponse.json(filteredRankings.slice(0, 10));
 
   } catch (error) {
