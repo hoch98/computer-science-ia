@@ -1,14 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "avatars.githubusercontent.com",
-      },
-    ],
-  },
+  // Tell Webpack to leave these native packages alone
+  serverExternalPackages: [
+    "@libsql/client", 
+    "@prisma/adapter-libsql", 
+    "libsql"
+  ],
+  
+  // ... any other config you already have (like images, etc.)
 };
 
 export default nextConfig;
