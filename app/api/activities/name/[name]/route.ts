@@ -18,7 +18,8 @@ export async function GET(
     });
 
     return NextResponse.json(activities);
-  } catch (_error) {
+  } catch (error) {
+    console.error('[Database Error]:', error); // ADD THIS
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
