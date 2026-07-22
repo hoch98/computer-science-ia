@@ -12,6 +12,8 @@ import {
   Button,
 } from "@mui/material";
 import { ACTIVITY_TYPES } from "../types";
+import { useState } from "react";
+import { parseTimetablePdf } from "@/lib/timetableparser";
 
 interface FilterModalProps {
   open: boolean;
@@ -23,6 +25,7 @@ interface FilterModalProps {
   selectedTypes: Set<string>;
   onTypeToggle: (typeName: string, isChecked: boolean) => void;
   setTimetableModalOpen: (f:boolean) => void;
+  setEvents: (events:any) => void;
 }
 
 export default function FilterModal({
@@ -34,8 +37,29 @@ export default function FilterModal({
   onUseCalendarPDFChange,
   selectedTypes,
   onTypeToggle,
-  setTimetableModalOpen
+  setTimetableModalOpen,
+  setEvents
 }: FilterModalProps) {
+
+  const [loading, setLoading] = useState(false)
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+
+    try {
+      const result = await parseTimetablePdf(file);
+      console.log(result)
+      setEvents(result)
+      setTimetableModalOpen(true)
+    } catch (err) {
+      console.error('[Timetable Parse Error]:', err);
+      alert(err instanceof Error ? err.message : 'Failed to parse the PDF timetable.');
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <>
       <Dialog
@@ -100,9 +124,10 @@ export default function FilterModal({
                 />
                 <input
                   type="file"
-                  accept=".pdf"
+                  accept="application/pdf"
                   style={{ fontSize: "14px" }}
-                  disabled={!useCalendarPDF}
+                  disabled={!useCalendarPDF || loading}
+                  onChange={handleFileChange}
                 />
               </Box>
               <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>

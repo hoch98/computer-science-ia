@@ -138,6 +138,7 @@ export default function Main() {
           selectedTypes={selectedTypes}
           onTypeToggle={handleTypeToggle}
           setTimetableModalOpen={setTimetableModalOpen}
+          setEvents={setEvents}
         />
 
         {/* duplicate selected activity alert */}

@@ -82,6 +82,10 @@ export default function TimetableModal({ open, onClose, events, onSave }: Timeta
     onSave(localEvents);
   };
 
+  const handleRemoveEvent = (id: string) => {
+    setLocalEvents((prev) => prev.filter((ev) => ev.id !== id));
+  };
+
   const HOUR_HEIGHT = 50; 
   const TOTAL_GRID_HEIGHT = (HOURS.length - 1) * HOUR_HEIGHT;
 
@@ -197,6 +201,7 @@ export default function TimetableModal({ open, onClose, events, onSave }: Timeta
                       return (
                         <Box
                           key={ev.id}
+                          onClick={() => handleRemoveEvent(ev.id)}
                           sx={{
                             position: "absolute",
                             top: `${topPx + 2}px`,
@@ -216,6 +221,11 @@ export default function TimetableModal({ open, onClose, events, onSave }: Timeta
                             fontWeight: 400,
                             zIndex: 2,
                             overflow: "hidden",
+                            cursor: "pointer",
+                            transition: "background-color 0.15s ease",
+                            "&:hover": {
+                              backgroundColor: "#6f7a86",
+                            },
                           }}
                         >
                           <Typography
