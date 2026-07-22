@@ -1,27 +1,16 @@
-import { withAccelerate } from '@prisma/extension-accelerate'
 import { PrismaClient } from '@prisma/client'
-import { PrismaLibSql } from '@prisma/adapter-libsql'
+import { PrismaLibSQL } from '@prisma/adapter-libsql'
 
-// 1. Correctly type the global object to hold the base PrismaClient
-const globalForPrisma = globalThis as unknown as { prismaBase: PrismaClient }
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
 
-let clientOptions = {}
+// Pass the configuration object directly into PrismaLibSQL
+const adapter = new PrismaLibSQL({
+  url: process.env.TURSO_DATABASE_URL || process.env.DATABASE_URL || '',
+  authToken: process.env.TURSO_AUTH_TOKEN,
+})
 
-if (process.env.TURSO_AUTH_TOKEN) {
-  const adapter = new PrismaLibSql({
-    url: process.env.TURSO_DATABASE_URL as string,
-    authToken: process.env.TURSO_AUTH_TOKEN as string,
-  })
-  
-  clientOptions = { adapter }
-}
+const prisma = globalForPrisma.prisma || new PrismaClient({ adapter })
 
-// 2. Instantiate and preserve the BASE client globally
-const prismaBase = globalForPrisma.prismaBase || new PrismaClient(clientOptions)
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prismaBase = prismaBase
-
-// 3. Apply the extension to the singleton instance and export that instead
-const prisma = prismaBase.$extends(withAccelerate())
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
 
 export default prisma
