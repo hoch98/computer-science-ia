@@ -5,14 +5,12 @@ import { Autocomplete, TextField, Box, Typography, Chip } from "@mui/material";
 import type { Activity } from "@prisma/client";
 
 interface ActivitySearchInputProps {
-  allActivities: Activity[];
   onSelectActivity: (activity: Activity) => void;
   error: boolean;
   setError: (error: boolean) => void;
 }
 
 export default function ActivitySearchInput({
-  allActivities,
   onSelectActivity,
   error,
   setError,
@@ -28,10 +26,8 @@ export default function ActivitySearchInput({
       if (!response.ok) throw new Error("Network request failed");
       return await response.json();
     } catch (err) {
-      console.warn("Server search failed. Falling back to locally loaded activities:", err);
-      return allActivities.filter((activity) =>
-        activity.name.toLowerCase().includes(query.toLowerCase())
-      );
+      console.warn("Server search failed: ", err);
+      return []
     }
   }
 

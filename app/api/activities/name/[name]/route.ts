@@ -6,7 +6,7 @@ export async function GET(
   { params }: { params: Promise<{ name: string }> }
 ) {
   try {
-    const resolvedParams = await params; // 2. Await the params object
+    const resolvedParams = await params;
     const name = resolvedParams.name;
     const activities = await prisma.activity.findMany({
       where: {

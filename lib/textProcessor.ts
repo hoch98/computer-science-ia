@@ -1,6 +1,6 @@
 // lib/textProcessor.ts
 
-// Standard list of official NLTK English stopwords
+// nltk stop words
 const STOP_WORDS = new Set([
   'i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', "you're", "you've", "you'll", "you'd",
   'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', "she's", 'her', 'hers',
@@ -18,34 +18,28 @@ const STOP_WORDS = new Set([
   'wasn', "wasn't", 'weren', "weren't", 'won', "won't", 'wouldn', "wouldn't"
 ]);
 
-/**
- * Replicates TextProcessor.process_description from text_processor.py
- * Lowercases text, splits out punctuation marks, ignores stopwords, and handles light lemmatization rules.
- */
 export function processDescription(text: string): string[] {
   if (!text || typeof text !== 'string') {
     return [];
   }
 
-  // Step 1: Case Normalization and Tokenization
-  // Isolates individual alphanumeric word elements (removes standalone punctuation blocks like '.', '!', '?')
+  // normalisation and tokenisation
+  // removes puncutation
   const rawTokens = text.toLowerCase().match(/\b\w+\b/g) || [];
   const processedTokens: string[] = [];
 
-  // Step 2: Filtration and Suffix Lemmatisation
   for (const token of rawTokens) {
-    // Exclude matching grammar stopwords
+    // matching  stopwords
     if (!STOP_WORDS.has(token)) {
       let rootToken = token;
 
-      // Clean morphological plural/noun extensions if word is sufficiently long
       if (rootToken.endsWith('ies') && rootToken.length > 5) {
         rootToken = rootToken.slice(0, -3) + 'y';
       } else if (rootToken.endsWith('s') && !rootToken.endsWith('ss') && rootToken.length > 3) {
         rootToken = rootToken.slice(0, -1);
       }
 
-      // Filter out single-character remnants or leftover junk symbols
+      // filter out single-character strings
       if (rootToken.length > 1) {
         processedTokens.push(rootToken);
       }

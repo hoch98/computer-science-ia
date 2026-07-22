@@ -1,8 +1,4 @@
-// lib/scoring.ts
 
-/**
- * Replicates SimilarityScoringSystem.calculate_term_frequencies
- */
 export function calculateTermFrequencies(terms: string[]): Record<string, number> {
   const frequencies: Record<string, number> = {};
   for (const term of terms) {
@@ -11,10 +7,6 @@ export function calculateTermFrequencies(terms: string[]): Record<string, number
   return frequencies;
 }
 
-/**
- * Replicates SimilarityScoringSystem.calculate_inverse_document_frequencies
- * Formula: idf = log(N / (1 + nt)) + 1
- */
 export function calculateInverseDocumentFrequencies(allTermsInDocuments: string[][]): Record<string, number> {
   const N = allTermsInDocuments.length;
   const ntList: Record<string, number> = {};
@@ -35,9 +27,6 @@ export function calculateInverseDocumentFrequencies(allTermsInDocuments: string[
   return idfWeights;
 }
 
-/**
- * Replicates SimilarityScoringSystem.calculate_tfidf_vector
- */
 export function calculateTfidfVector(tf: Record<string, number>, idfWeights: Record<string, number>): Record<string, number> {
   const tfidfVector: Record<string, number> = {};
   for (const term in tf) {
@@ -50,10 +39,6 @@ export function calculateTfidfVector(tf: Record<string, number>, idfWeights: Rec
   return tfidfVector;
 }
 
-/**
- * Replicates SimilarityScoringSystem.calculate_cosine_similarity
- * Returns percentage similarity rounded to 4 decimals: float(round(similarity * 100, 4))
- */
 export function calculateCosineSimilarity(vecA: number[], vecB: number[]): number {
   let dotProduct = 0;
   let normA = 0;

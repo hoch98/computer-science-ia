@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     const hasAllKeys = requiredKeys.every(k => payloadKeys.includes(k)) && payloadKeys.length === requiredKeys.length;
 
     if (!hasAllKeys) {
-      return new NextResponse('not appropriate', { status: 400 });
+      return new NextResponse('not valid', { status: 400 });
     }
 
     const { activities: activitiesId, unavailable_slots, grade, tags } = content;
