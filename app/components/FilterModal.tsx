@@ -13,7 +13,7 @@ import {
 } from "@mui/material";
 import { ACTIVITY_TYPES } from "../types";
 import { useState } from "react";
-import { parseTimetablePdf } from "@/lib/timetableparser";
+import { parseTimetableHtml } from "@/lib/timetableparser";
 
 interface FilterModalProps {
   open: boolean;
@@ -49,13 +49,13 @@ export default function FilterModal({
     setLoading(true);
 
     try {
-      const result = await parseTimetablePdf(file);
+      const result = await parseTimetableHtml(file);
       console.log(result)
       setEvents(result)
       setTimetableModalOpen(true)
     } catch (err) {
-      console.error('[Timetable Parse Error]:', err);
-      alert(err instanceof Error ? err.message : 'Failed to parse the PDF timetable.');
+      console.error('error:', err);
+      alert('Failed to parse timetable.');
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,7 @@ export default function FilterModal({
                 />
                 <input
                   type="file"
-                  accept="application/pdf"
+                  accept=".html"
                   style={{ fontSize: "14px" }}
                   disabled={!useCalendarPDF || loading}
                   onChange={handleFileChange}

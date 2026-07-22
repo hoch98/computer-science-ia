@@ -20,13 +20,13 @@ export default function ActivitySearchInput({
   const [options, setOptions] = useState<Activity[]>([]);
 
   async function findActivityByName(query: string): Promise<Activity[]> {
-    if (query.trim() === "") return [];
+    if (query == "") return [];
     try {
       const response = await fetch(`/api/activities/name/${encodeURIComponent(query)}`);
-      if (!response.ok) throw new Error("Network request failed");
+      if (!response.ok) throw new Error("request failed");
       return await response.json();
     } catch (err) {
-      console.warn("Server search failed: ", err);
+      console.warn("search failed: ", err);
       return []
     }
   }

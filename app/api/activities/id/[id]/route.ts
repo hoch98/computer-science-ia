@@ -10,7 +10,7 @@ export async function GET(
     const activityId = parseInt(resolvedParams.id, 10);
     
     if (isNaN(activityId)) {
-      return NextResponse.json({ error: 'Invalid ID' }, { status: 400 });
+      return NextResponse.json({ error: 'invalid ID' }, { status: 400 });
     }
 
     const activity = await prisma.activity.findUnique({
@@ -24,6 +24,6 @@ export async function GET(
 
     return NextResponse.json(activity);
   } catch (_error) {
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Server Error' }, { status: 500 });
   }
 }

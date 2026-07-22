@@ -42,7 +42,6 @@ export default function TimetableModal({ open, onClose, events, onSave }: Timeta
   const [startTimeStr, setStartTimeStr] = useState("08:00");
   const [endTimeStr, setEndTimeStr] = useState("09:30");
 
-  // sets main event as temporary events on modal open to erase progress
   useEffect(() => {
     if (open) {
       setLocalEvents(events);

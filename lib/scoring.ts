@@ -20,7 +20,7 @@ export function calculateInverseDocumentFrequencies(allTermsInDocuments: string[
 
   const idfWeights: Record<string, number> = {};
   for (const term in ntList) {
-    // Math.log computes the natural logarithm (ln), exactly matching Python's math.log
+    // log = natural log
     idfWeights[term] = Math.log(N / (1 + ntList[term])) + 1;
   }
 
