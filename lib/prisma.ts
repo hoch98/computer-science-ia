@@ -1,30 +1,27 @@
-
 import { withAccelerate } from '@prisma/extension-accelerate'
-
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSql } from '@prisma/adapter-libsql'
 
-const globalForPrisma = globalThis as unknown as { prisma: PrismaClient }
+// 1. Correctly type the global object to hold the base PrismaClient
+const globalForPrisma = globalThis as unknown as { prismaBase: PrismaClient }
 
 let clientOptions = {}
 
-// 1. Detect if we are in production with Turso
 if (process.env.TURSO_AUTH_TOKEN) {
-  // Pass the connection config directly to PrismaLibSql
   const adapter = new PrismaLibSql({
     url: process.env.TURSO_DATABASE_URL as string,
     authToken: process.env.TURSO_AUTH_TOKEN as string,
   })
   
   clientOptions = { adapter }
-} else {
-  // 2. Local fallback uses standard native SQLite engine
-  // Prisma 7 reads DATABASE_URL="file:./dev.db" natively from your .env
 }
 
-// 3. Instantiate the client instance
-const prisma = globalForPrisma.prisma || new PrismaClient(clientOptions).$extends(withAccelerate())
+// 2. Instantiate and preserve the BASE client globally
+const prismaBase = globalForPrisma.prismaBase || new PrismaClient(clientOptions)
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prismaBase = prismaBase
+
+// 3. Apply the extension to the singleton instance and export that instead
+const prisma = prismaBase.$extends(withAccelerate())
 
 export default prisma
