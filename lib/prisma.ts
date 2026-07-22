@@ -12,7 +12,7 @@ let clientOptions = {}
 if (process.env.TURSO_AUTH_TOKEN) {
   // Pass the connection config directly to PrismaLibSql
   const adapter = new PrismaLibSql({
-    url: process.env.DATABASE_URL as string,
+    url: process.env.TURSO_DATABASE_URL as string,
     authToken: process.env.TURSO_AUTH_TOKEN as string,
   })
   
