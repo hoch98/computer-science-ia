@@ -52,7 +52,7 @@ export async function POST(request: Request) {
       let collision = false;
       if (!tags.includes(activity.type)) return false;
       for (const unavail of unavailable_slots) {
-        const [unavailDay, unavailStart, unavailEnd] = unavail;
+        const [unavailDay, unavailStart, unavailEnd] = [unavail.day, unavail.startTime, unavail.endTime];
         
         for (const schedule of activity.schedules) {
           if (
